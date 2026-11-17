@@ -1,0 +1,131 @@
+name: Build Mobile APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type (debug recommended for testing)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+      create_release:
+        description: 'Publish direct APK to GitHub Releases (easier to download on phone)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Ensure Gradle Wrapper
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            echo "Gradle wrapper not found in repo, generating with Gradle 8.9..."
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
+
+      - name: Build APK with Gradle
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
+        run: |
+          if [ "$BUILD_TYPE" = "release" ]; then
+            echo "Building Release APK..."
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            echo "Building Debug APK..."
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Prepare APK Artifact
+        id: prepare_apk
+        run: |
+          mkdir -p release-artifacts
+          APK_PATH=$(find app/build/outputs/apk/ -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK file generated!"
+            exit 1
+          fi
+          echo "Found APK: $APK_PATH"
+          cp "$APK_PATH" release-artifacts/ReelsCounter-test.apk
+          echo "apk_path=release-artifacts/ReelsCounter-test.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$(du -h "$APK_PATH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReelsCounter-test-apk
+          path: release-artifacts/ReelsCounter-test.apk
+          retention-days: 30
+
+      - name: Create GitHub Release (Direct Mobile Download)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref_type }}" != "tag" ]; then
+            TAG_NAME="test-build-${{ github.run_number }}"
+          fi
+          echo "Creating Release $TAG_NAME..."
+          gh release create "$TAG_NAME" release-artifacts/ReelsCounter-test.apk \
+            --title "Mobile Test Build: $TAG_NAME" \
+            --notes "Automated Android APK build for mobile testing. Direct download APK attached below." \
+            --prerelease
+
+      - name: Post Job Summary
+        run: |
+          echo "## 📱 Mobile Test Build Completed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Details | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Application** | ReelsCounter |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package ID** | \`com.reelscounter.local\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Size** | \`${{ steps.prepare_apk.outputs.apk_size }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target SDK** | Android 15 (SDK 35) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Min SDK** | Android 8.0+ (SDK 26) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Event** | \`${{ github.event_name }}\` on \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📲 How to Install & Test on Your Mobile Device:" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Download APK**: Download \`ReelsCounter-test-apk\` from the **Artifacts** section at the bottom of this page (or directly from **Releases** if generated)." >> $GITHUB_STEP_SUMMARY
+          echo "2. **Install**: Open the downloaded APK on your Android phone." >> $GITHUB_STEP_SUMMARY
+          echo "3. **Permissions**: If prompted with *'Install unknown apps'*, allow it for your browser or file manager." >> $GITHUB_STEP_SUMMARY
+          echo "4. **Activate**: Launch **Reels Counter**, tap **Enable / manage tracking**, and turn on **Reels Counter tracking** in Accessibility settings." >> $GITHUB_STEP_SUMMARY

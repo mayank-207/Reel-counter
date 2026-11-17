@@ -1,0 +1,85 @@
+# Codemagic CI/CD configuration for ReelsCounter (Native Android)
+# Documentation: https://docs.codemagic.io/yaml-quick-start/
+
+workflows:
+  # Workflow 1: Fast Debug Build for Mobile Testing
+  # Automatically signed with Android's debug key so it installs directly on mobile devices
+  android-mobile-test:
+    name: ReelsCounter - Mobile Test Build (APK)
+    max_build_duration: 30
+    instance_type: mac_mini_m2 # Standard instance on Codemagic (runs on macOS/Linux)
+    environment:
+      java: 17
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: master
+          include: true
+    scripts:
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Ensure Gradle Wrapper
+        script: |
+          if [ ! -f "./gradlew" ]; then
+            echo "Gradle wrapper not found, generating wrapper with Gradle 8.9..."
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
+
+      - name: Build Debug APK for Testing
+        script: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+    artifacts:
+      # Codemagic will capture the APK and generate a scannable QR code on the build page
+      - app/build/outputs/apk/debug/*.apk
+
+    publishing:
+      # Optional: enter your email below to receive download links right after the build completes
+      # email:
+      #   recipients:
+      #     - your-email@example.com
+      #   notify:
+      #     success: true
+      #     failure: true
+
+  # Workflow 2: Release Build (Optional)
+  android-release:
+    name: ReelsCounter - Release Build
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      java: 17
+      # Configure your release keystore in Codemagic Web UI (Team settings > Environment variables)
+      # android_signing:
+      #   - my_android_keystore
+    triggering:
+      events:
+        - tag
+      branch_patterns:
+        - pattern: 'v*'
+          include: true
+    scripts:
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Ensure Gradle Wrapper
+        script: |
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
+
+      - name: Build Release APK
+        script: |
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
