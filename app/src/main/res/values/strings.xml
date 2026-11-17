@@ -1,0 +1,1 @@
+<resources><string name="app_name">Reels Counter</string><string name="accessibility_description">Detects short-form video screens and scrolling inside supported social apps. Stores only local encrypted counters, not screen text.</string></resources>
