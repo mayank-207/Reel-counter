@@ -1,6 +1,3 @@
-# Codemagic CI/CD configuration for ReelsCounter (Native Android)
-# Documentation: https://docs.codemagic.io/yaml-quick-start/
-
 workflows:
   # Workflow 1: Fast Debug Build for Mobile Testing
   # Automatically signed with Android's debug key so it installs directly on mobile devices
@@ -37,17 +34,8 @@ workflows:
           ./gradlew assembleDebug --no-daemon --stacktrace
 
     artifacts:
-      # Codemagic will capture the APK and generate a scannable QR code on the build page
+      # Codemagic captures the APK and generates a scannable QR code on the build page
       - app/build/outputs/apk/debug/*.apk
-
-    publishing:
-      # Optional: enter your email below to receive download links right after the build completes
-      # email:
-      #   recipients:
-      #     - your-email@example.com
-      #   notify:
-      #     success: true
-      #     failure: true
 
   # Workflow 2: Release Build (Optional)
   android-release:
